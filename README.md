@@ -22,14 +22,18 @@ Adapted from that source, but restated a bit to be more SQL-friendly, the algori
   * Record the traceback steps: `(0,1,2)` for `(match, insertion, deletion)`, respectively
 * Record the path taken to trace back from `N,M` to `0,0`
   * Recurse over the recorded traceback steps
+
+## Solution
+
+See the notebook [duckdb-dtw.ipynb](duckdb-dtw.ipynb) for the in-process solution!
  
 ## Planning
 
 - [x] Mock two test sequences
 - [x] For the test sequences, compute reference distance matrix, distance, and warp path using the `dtaidistance` Python package
 - [x] Calculate point-wise distance matrix
-- [x] Calculate full distance matrix and validate with reference
-- [ ] Calculate warp path and validate with reference
+- [x] Calculate full cost matrix and validate with reference
+- [x] Calculate warp path and validate with reference
 - [ ] Add features:
   - [ ] Window (e.g. Sakoe-Chiba band)
   - [ ] Other early-stopping approaches
