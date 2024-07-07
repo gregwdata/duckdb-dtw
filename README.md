@@ -28,7 +28,7 @@ Adapted from that source, but restated a bit to be more SQL-friendly, the algori
 - [x] Mock two test sequences
 - [x] For the test sequences, compute reference distance matrix, distance, and warp path using the `dtaidistance` Python package
 - [x] Calculate point-wise distance matrix
-- [ ] Calculate full distance matrix and validate with reference
+- [x] Calculate full distance matrix and validate with reference
 - [ ] Calculate warp path and validate with reference
 - [ ] Add features:
   - [ ] Window (e.g. Sakoe-Chiba band)

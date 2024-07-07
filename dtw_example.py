@@ -122,34 +122,121 @@ WITH RECURSIVE
        WHERE (d.index1 > 0 OR d.index2 > 0)
          AND 
        cost is not null
-       --WHERE cost is not null
-       --QUALIFY row_number() OVER (order by sub.cost) = 1
-    --     -- Match case:
-    --     LEFT JOIN cost_matrix match on d.index1 = match.index1 + 1 AND d.index2 = match.index2 + 1
-    --     -- Insertion case:cd.index1 = match.index1 + 1 AND d.index2 = match.index2 + 1
-    --     LEFT JOIN cost_matrix ins on d.index1 = ins.index1 + 1 AND d.index2 = ins.index2 
-    --     -- Deletion case:
-    --     LEFT JOIN cost_matrix del on d.index1 = del.index1 AND d.index2 = del.index2 + 1 
-    --     WHERE d.index1 > 0 OR d.index2 > 0
-    --    -- add a qualify that we are picking the least one - otherwise we branch out 3 ways at each step
-    --    -- this ensures only the joined cost_matrix with lowest cost is kept.
-    --    QUALIFY ROW_NUMBER() OVER (ORDER BY cost) = 1
     )
-SELECT * FROM cost_matrix
---ORDER by index1, index2
---WHERE index1 = 10 and index2 = 7
+SELECT  
+    min(cost)
+    ,index1
+    ,index2
+    FROM cost_matrix
+    GROUP BY index1, index2
 """).show()
-
-db.sql("""SELECT least(2.0,3.0,4.0,'Infinity')""").show()
 
 db.sql("""SELECT * FROM dist_matrix""")
 
 db.sql("""drop table dist_matrix""")
 
-from dtaidistance.dtw import distance_fast, distance_matrix_fast, warping_path_fast
+from dtaidistance.dtw import distance_fast, distance_matrix_fast, warping_path_fast, warping_paths_fast
+from dtaidistance.dtw_visualisation import plot_warpingpaths
 
 distance_fast(s1, s2)**2
 
 distance_matrix_fast([s1,s2])
 warping_path_fast(s1,s2)
+warping_paths_fast(s1,s2)[1]
 
+plot_warpingpaths(s1,s2,warping_paths_fast(s1,s2)[1])
+
+
+
+# full query without intermediate table:
+db.sql("""
+WITH RECURSIVE
+    seq1 as (
+        SELECT * as value, row_number() OVER () - 1 as s_index
+        FROM s1   
+    ),
+    seq2 as (
+        SELECT * as value, row_number() OVER () - 1 as s_index
+        FROM s2   
+    ),
+    dist_matrix as (
+        SELECT 
+            (seq1.value - seq2.value)^2 as dist
+            ,seq1.s_index as index1
+            ,seq2.s_index as index2
+        FROM seq1
+        FULL OUTER JOIN
+            seq2 ON 1=1
+    ),
+    cost_matrix_all_steps as (
+        -- start at 0,0
+        SELECT 
+            dist
+            ,index1
+            ,index2
+            ,dist as cost
+            ,NULL as step
+        FROM dist_matrix
+        WHERE index1 = 0 and index2 = 0
+        UNION ALL 
+        -- recurse through 1 of 3 paths
+        SELECT 
+            d.dist
+            ,d.index1
+            ,d.index2
+            ,d.dist + sub.cost as cost
+            , sub.step
+        FROM dist_matrix d
+        -- LEFT JOIN to a subquery that preselects the lowest cost of the three connected cells
+        LEFT JOIN (
+            -- match case
+             SELECT * EXCLUDE(step), 0 as step FROM cost_matrix_all_steps c1 WHERE d.index1 = c1.index1 + 1 AND d.index2 = c1.index2 + 1
+             UNION ALL 
+            -- insertion case
+             SELECT * EXCLUDE(step), 1 as step FROM cost_matrix_all_steps c2 WHERE d.index1 = c2.index1 + 1 AND d.index2 = c2.index2
+             UNION ALL 
+            -- deletion case
+             SELECT * EXCLUDE(step), 2 as step FROM cost_matrix_all_steps c3 WHERE d.index1 = c3.index1 AND d.index2 = c3.index2 + 1
+         ) sub on 1=1
+       WHERE (d.index1 > 0 OR d.index2 > 0)
+         AND 
+       cost is not null
+    ),
+cost_matrix as (
+    SELECT  
+    min(cost)
+    ,index1
+    ,index2
+    ,arg_min(step,cost) as step
+    FROM cost_matrix_all_steps
+    GROUP BY index1, index2
+    ),
+    warping_path as (
+       -- recursive function to start at top-right corner and trace back to origin
+       SELECT 
+          * 
+       ,CASE WHEN step = 0 or step = 1 THEN index1 - 1
+                ELSE index1 END
+        as next_index1 
+       ,CASE WHEN step = 0 or step = 2 THEN index2 - 1
+                ELSE index2 END
+        as next_index2
+       FROM cost_matrix
+          WHERE index1 = (SELECT max(s_index) FROM seq1) AND index2 = (SELECT max(s_index) FROM seq2)
+       
+       UNION ALL
+       
+       SELECT 
+          c.* 
+       ,CASE WHEN c.step = 0 or c.step = 1 THEN c.index1 - 1
+                ELSE c.index1 END
+        as next_index1 
+       ,CASE WHEN c.step = 0 or c.step = 2 THEN c.index2 - 1
+                ELSE c.index2 END
+        as next_index2
+       FROM warping_path wp
+       INNER JOIN cost_matrix c ON c.index1 = wp.next_index1 AND c.index2 = wp.next_index2
+       WHERE c.index1 > 0 AND c.index2 > 0
+       )
+    SELECT * FROM warping_path
+""").show()
